@@ -17,7 +17,7 @@ const skipOutputTests = [
   'moduleSourceName',
   'icuSyntax',
   'removeDescriptions',
-  'overrideIdFn',
+  'overrideMessageFn',
   'removeDefaultMessage',
   'additionalComponentNames',
 ];
@@ -72,16 +72,20 @@ describe('options', () => {
     ).toThrow(/Message must have a `description`/);
   });
 
-  it('correctly overrides the id when overrideIdFn is provided', () => {
-    const fixtureDir = join(fixturesDir, 'overrideIdFn');
+  it('correctly overrides the id and/or defaultMessage when overrideMessageFn is provided', () => {
+    const fixtureDir = join(fixturesDir, 'overrideMessageFn');
 
     const actual = transform(join(fixtureDir, 'actual.js'), {
-      overrideIdFn: (
+      overrideMessageFn: (
         id: string,
         defaultMessage: string,
         description: string
       ) => {
-        return `HELLO.${id}.${defaultMessage.length}.${typeof description}`;
+        return {
+          id: `HELLO.${id}.${defaultMessage.length}.${typeof description}`,
+          SUPER_DEFAULT_MESSAGE: defaultMessage,
+          defaultMessage: `bye ${defaultMessage}`,
+        };
       },
     })!.code;
 

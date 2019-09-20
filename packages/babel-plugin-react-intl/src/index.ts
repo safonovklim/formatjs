@@ -34,6 +34,7 @@ interface MessageDescriptor {
   id: string;
   defaultMessage?: string;
   description?: string;
+  [x: string]: any;
 }
 
 type ExtractedMessageDescriptor = MessageDescriptor &
@@ -50,7 +51,11 @@ export interface Opts {
   enforceDescriptions?: boolean;
   extractSourceLocation?: boolean;
   messagesDir: string;
-  overrideIdFn?(id: string, defaultMessage: string, descriptor: string): string;
+  overrideMessageFn?(
+    id: string,
+    defaultMessage: string,
+    descriptor: string
+  ): object;
   removeDefaultMessage?: boolean;
   extractFromFormatMessageCall?: boolean;
   additionalComponentNames?: string[];
@@ -189,7 +194,7 @@ function createMessageDescriptor(
 function evaluateMessageDescriptor(
   descriptorPath: MessageDescriptorPath,
   isJSXSource = false,
-  overrideIdFn?: Opts['overrideIdFn']
+  overrideMessageFn?: Opts['overrideMessageFn']
 ) {
   let id = getMessageDescriptorValue(descriptorPath.id);
   const defaultMessage = getICUMessageValue(descriptorPath.defaultMessage, {
@@ -197,10 +202,7 @@ function evaluateMessageDescriptor(
   });
   const description = getMessageDescriptorValue(descriptorPath.description);
 
-  if (overrideIdFn) {
-    id = overrideIdFn(id, defaultMessage, description);
-  }
-  const descriptor: MessageDescriptor = {
+  let descriptor: MessageDescriptor = {
     id,
   };
 
@@ -211,11 +213,18 @@ function evaluateMessageDescriptor(
     descriptor.defaultMessage = defaultMessage;
   }
 
+  if (overrideMessageFn) {
+    descriptor = {
+      ...descriptor,
+      ...overrideMessageFn(id, defaultMessage, description),
+    };
+  }
+
   return descriptor;
 }
 
 function storeMessage(
-  {id, description, defaultMessage}: MessageDescriptor,
+  descriptor: MessageDescriptor,
   path: NodePath,
   {
     enforceDescriptions,
@@ -225,21 +234,21 @@ function storeMessage(
   filename: string,
   messages: Map<string, ExtractedMessageDescriptor>
 ) {
-  if (!id || (enforceDefaultMessage && !defaultMessage)) {
+  if (!descriptor.id || (enforceDefaultMessage && !descriptor.defaultMessage)) {
     throw path.buildCodeFrameError(
       '[React Intl] Message Descriptors require an `id` and `defaultMessage`.'
     );
   }
 
-  if (messages.has(id)) {
-    const existing = messages.get(id);
+  if (messages.has(descriptor.id)) {
+    const existing = messages.get(descriptor.id);
 
     if (
-      description !== existing!.description ||
-      defaultMessage !== existing!.defaultMessage
+      descriptor.description !== existing!.description ||
+      descriptor.defaultMessage !== existing!.defaultMessage
     ) {
       throw path.buildCodeFrameError(
-        `[React Intl] Duplicate message id: "${id}", ` +
+        `[React Intl] Duplicate message id: "${descriptor.id}", ` +
           'but the `description` and/or `defaultMessage` are different.'
       );
     }
@@ -247,8 +256,9 @@ function storeMessage(
 
   if (enforceDescriptions) {
     if (
-      !description ||
-      (typeof description === 'object' && Object.keys(description).length < 1)
+      !descriptor.description ||
+      (typeof descriptor.description === 'object' &&
+        Object.keys(descriptor.description).length < 1)
     ) {
       throw path.buildCodeFrameError(
         '[React Intl] Message must have a `description`.'
@@ -264,7 +274,7 @@ function storeMessage(
     };
   }
 
-  messages.set(id, {id, description, defaultMessage, ...loc});
+  messages.set(descriptor.id, {...descriptor, ...loc});
 }
 
 function referencesImport(
@@ -396,7 +406,7 @@ export default declare((api: any) => {
           additionalComponentNames = [],
           enforceDefaultMessage,
           removeDefaultMessage,
-          overrideIdFn,
+          overrideMessageFn,
         } = opts;
         if (wasExtracted(path)) {
           return;
@@ -449,7 +459,7 @@ export default declare((api: any) => {
             const descriptor = evaluateMessageDescriptor(
               descriptorPath,
               true,
-              overrideIdFn
+              overrideMessageFn
             );
 
             storeMessage(
@@ -471,7 +481,7 @@ export default declare((api: any) => {
               ) {
                 attr.remove();
               } else if (
-                overrideIdFn &&
+                overrideMessageFn &&
                 getMessageDescriptorKey(ketPath) === 'id'
               ) {
                 attr.get('value').replaceWith(t.stringLiteral(descriptor.id));
@@ -496,7 +506,7 @@ export default declare((api: any) => {
         const {ReactIntlMessages: messages} = this;
         const {
           moduleSourceName = 'react-intl',
-          overrideIdFn,
+          overrideMessageFn,
           removeDefaultMessage,
           extractFromFormatMessageCall,
         } = opts;
@@ -533,7 +543,7 @@ export default declare((api: any) => {
           const descriptor = evaluateMessageDescriptor(
             descriptorPath,
             false,
-            overrideIdFn
+            overrideMessageFn
           );
           storeMessage(descriptor, messageDescriptor, opts, filename, messages);
 
